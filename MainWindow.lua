@@ -989,39 +989,48 @@ apply_compact_layout = function(compact)
             chat_pane_frame:SetPoint("BOTTOMRIGHT", main_window, "BOTTOMRIGHT", -10, 10)
         end
         main_window:SetMinResize(450, 300)
+        refresh_top_bar()
+        refresh_roster()
     end
 end
 
 toggle_compact_mode = function()
     if not main_window then return end
-    local old_w = main_window:GetWidth()
-    local old_h = main_window:GetHeight()
 
     if not is_compact then
-        -- Entering compact mode: newWidth = oldWidth - leftPanelWidth, newHeight = oldHeight
-        local new_w = old_w - LEFT_PANEL_WIDTH
-        if new_w < 200 then new_w = 200 end
+        -- Entering compact mode: remember current full mode dimensions
+        if XSocialConfig then
+            XSocialConfig.windowWidth = main_window:GetWidth()
+            XSocialConfig.windowHeight = main_window:GetHeight()
+        end
+
+        local compact_w = (XSocialConfig and XSocialConfig.compactWidth) or (main_window:GetWidth() - LEFT_PANEL_WIDTH)
+        local compact_h = (XSocialConfig and XSocialConfig.compactHeight) or main_window:GetHeight()
+        if compact_w < 200 then compact_w = 200 end
+        if compact_h < 200 then compact_h = 200 end
+
         apply_compact_layout(true)
-        main_window:SetWidth(new_w)
-        main_window:SetHeight(old_h)
+        main_window:SetWidth(compact_w)
+        main_window:SetHeight(compact_h)
     else
-        -- Exiting compact mode: newWidth = oldWidth + leftPanelWidth, newHeight = oldHeight
-        local new_w = old_w + LEFT_PANEL_WIDTH
-        if new_w < 450 then new_w = 450 end
-        if old_h < 300 then old_h = 300 end
+        -- Exiting compact mode: remember current compact mode dimensions
+        if XSocialConfig then
+            XSocialConfig.compactWidth = main_window:GetWidth()
+            XSocialConfig.compactHeight = main_window:GetHeight()
+        end
+
+        local full_w = (XSocialConfig and XSocialConfig.windowWidth) or (main_window:GetWidth() + LEFT_PANEL_WIDTH)
+        local full_h = (XSocialConfig and XSocialConfig.windowHeight) or main_window:GetHeight()
+        if full_w < 450 then full_w = 450 end
+        if full_h < 300 then full_h = 300 end
+
         apply_compact_layout(false)
-        main_window:SetWidth(new_w)
-        main_window:SetHeight(old_h)
+        main_window:SetWidth(full_w)
+        main_window:SetHeight(full_h)
     end
 
     if XSocialConfig then
         XSocialConfig.isCompact = is_compact
-        if not is_compact then
-            XSocialConfig.windowWidth = main_window:GetWidth()
-        else
-            XSocialConfig.windowWidth = main_window:GetWidth() + LEFT_PANEL_WIDTH
-        end
-        XSocialConfig.windowHeight = main_window:GetHeight()
     end
 end
 
@@ -1031,12 +1040,24 @@ end
 create_main_window = function()
     if main_window then return main_window end
 
-    local init_w = (XSocialConfig and XSocialConfig.windowWidth) or 620
-    local init_h = (XSocialConfig and XSocialConfig.windowHeight) or 360
-    if init_w < 450 then init_w = 450 end
-    if init_h < 300 then init_h = 300 end
+    local is_start_compact = (XSocialConfig and XSocialConfig.isCompact) and true or false
+
+    local full_w = (XSocialConfig and XSocialConfig.windowWidth) or 620
+    local full_h = (XSocialConfig and XSocialConfig.windowHeight) or 360
+    if full_w < 450 then full_w = 450 end
+    if full_h < 300 then full_h = 300 end
+
+    local compact_w = (XSocialConfig and XSocialConfig.compactWidth) or (full_w - LEFT_PANEL_WIDTH)
+    local compact_h = (XSocialConfig and XSocialConfig.compactHeight) or full_h
+    if compact_w < 200 then compact_w = 200 end
+    if compact_h < 200 then compact_h = 200 end
+
+    local init_w = is_start_compact and compact_w or full_w
+    local init_h = is_start_compact and compact_h or full_h
 
     local window_frame = CreateFrame("Frame", "XSocialMainWindow", UIParent)
+    main_window = window_frame
+
     window_frame:SetWidth(init_w)
     window_frame:SetHeight(init_h)
     window_frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -1061,7 +1082,11 @@ create_main_window = function()
     window_frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
 
     window_frame:SetResizable(true)
-    window_frame:SetMinResize(450, 300)
+    if is_start_compact then
+        window_frame:SetMinResize(200, 200)
+    else
+        window_frame:SetMinResize(450, 300)
+    end
     window_frame:SetMaxResize(1200, 900)
 
     -- Top-right close button [X]
@@ -1108,11 +1133,12 @@ create_main_window = function()
         local cur_h = window_frame:GetHeight()
         if XSocialConfig then
             if is_compact then
-                XSocialConfig.windowWidth = cur_w + LEFT_PANEL_WIDTH
+                XSocialConfig.compactWidth = cur_w
+                XSocialConfig.compactHeight = cur_h
             else
                 XSocialConfig.windowWidth = cur_w
+                XSocialConfig.windowHeight = cur_h
             end
-            XSocialConfig.windowHeight = cur_h
         end
     end)
 
@@ -1122,10 +1148,8 @@ create_main_window = function()
     create_chat_pane(window_frame)
 
     -- If previously saved in compact mode, apply compact layout
-    if XSocialConfig and XSocialConfig.isCompact then
+    if is_start_compact then
         apply_compact_layout(true)
-        window_frame:SetWidth(init_w - LEFT_PANEL_WIDTH)
-        window_frame:SetHeight(init_h)
     end
 
     -- OnShow: Debounced roster request and stop HUD alert flashing
@@ -1140,7 +1164,6 @@ create_main_window = function()
         end
     end)
 
-    main_window = window_frame
     return main_window
 end
 

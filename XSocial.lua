@@ -22,9 +22,11 @@ local default_config = {
     locked       = true,
     buttonPos    = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
     debug        = false,
-    windowWidth  = 620,
-    windowHeight = 360,
-    isCompact    = false,
+    windowWidth   = 620,
+    windowHeight  = 360,
+    compactWidth  = 378,
+    compactHeight = 360,
+    isCompact     = false,
 }
 
 -- ============================================================
