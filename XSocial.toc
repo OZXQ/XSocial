@@ -1,0 +1,11 @@
+## Interface: 11200
+## Title: XSocial
+## Notes: Channel friend tracker for Vanilla WoW - friend list and LFG
+## Version: 0.2.1
+## SavedVariables: XSocialDB, XSocialConfig
+
+libhook.lua
+localization.lua
+XSocial.lua
+HUDButton.lua
+MainWindow.lua
