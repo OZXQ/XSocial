@@ -599,7 +599,6 @@ end
 -- Routes shift-clicked items, quests, spells, and players into XSocial's editbox
 -- when XSocial chat input is open/focused, without breaking Blizzard chat.
 -- ============================================================
-local orig_cf_is_visible = nil
 local orig_cf_insert     = nil
 
 local function insert_to_xsocial(text_or_link)
@@ -620,23 +619,17 @@ is_xsocial_editbox_target = function()
 end
 
 hook_chat_frame_editbox = function()
-    if not ChatFrameEditBox or orig_cf_is_visible then return end
+    if not ChatFrameEditBox or orig_cf_insert then return end
 
-    orig_cf_is_visible = ChatFrameEditBox.IsVisible
-    orig_cf_insert     = ChatFrameEditBox.Insert
-
-    ChatFrameEditBox.IsVisible = function(self)
-        if is_xsocial_editbox_target() then
-            return true
-        end
-        return orig_cf_is_visible(self)
-    end
+    orig_cf_insert = ChatFrameEditBox.Insert
 
     ChatFrameEditBox.Insert = function(self, text)
         if is_xsocial_editbox_target() and insert_to_xsocial(text) then
             return
         end
-        return orig_cf_insert(self, text)
+        if orig_cf_insert then
+            return orig_cf_insert(self, text)
+        end
     end
 end
 
