@@ -77,6 +77,9 @@ local function get_ui_font(size)
     if XSocial and XSocial.get_ui_font then
         return XSocial.get_ui_font(size)
     end
+    if GameFontNormal and GameFontNormal.GetFont then
+        return GameFontNormal:GetFont(), (size or 11)
+    end
     return "Fonts\\FRIZQT__.TTF", (size or 11)
 end
 
@@ -197,6 +200,11 @@ create_top_bar = function(parent_frame)
     bar_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 12, -8)
     bar_frame:SetPoint("TOPRIGHT", parent_frame, "TOPRIGHT", -55, -8)
     bar_frame:SetHeight(22)
+    bar_frame:EnableMouse(true)
+    bar_frame:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
     top_bar_frame = bar_frame
 
     -- Item 1: Channel Name + Gear
@@ -351,6 +359,7 @@ get_or_create_row = function(index_num, parent_child, row_width, row_height)
     -- Hover Tooltip helpers for entire row (Toon, Nick, Level/Class, Zone, Note)
     local function show_row_tooltip()
         row_frame._bg:SetTexture(0.2, 0.2, 0.2, 0.45)
+        toon_text:SetTextColor(1, 0.82, 0)
         local member_name = row_frame._char_name
         if member_name and member_name ~= "" and GameTooltip then
             GameTooltip:SetOwner(row_frame, "ANCHOR_RIGHT")
@@ -382,28 +391,33 @@ get_or_create_row = function(index_num, parent_child, row_width, row_height)
         else
             row_frame._bg:SetTexture(0.05, 0.05, 0.05, 0.15)
         end
+        toon_text:SetTextColor(0.9, 0.9, 0.9)
         if GameTooltip then
             GameTooltip:Hide()
         end
     end
 
+    local function on_row_click()
+        local target_name = row_frame._char_name
+        if not target_name or target_name == "" then return end
+
+        if IsShiftKeyDown() and chat_edit_box and chat_edit_box_focused then
+            chat_edit_box:Insert("|cffffffff|Hplayer:" .. target_name .. "|h[" .. target_name .. "]|h|r")
+            return
+        end
+
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+        ChatFrame_OpenChat("/w " .. target_name .. " ")
+    end
+
     row_frame:SetScript("OnEnter", show_row_tooltip)
     row_frame:SetScript("OnLeave", hide_row_tooltip)
+    row_frame:SetScript("OnClick", on_row_click)
 
-    toon_btn:SetScript("OnClick", function()
-        local target_name = row_frame._char_name
-        if target_name and target_name ~= "" then
-            ChatFrame_OpenChat("/w " .. target_name .. " ")
-        end
-    end)
-    toon_btn:SetScript("OnEnter", function()
-        toon_text:SetTextColor(1, 0.82, 0)
-        show_row_tooltip()
-    end)
-    toon_btn:SetScript("OnLeave", function()
-        toon_text:SetTextColor(0.9, 0.9, 0.9)
-        hide_row_tooltip()
-    end)
+    toon_btn:SetScript("OnClick", on_row_click)
+    toon_btn:SetScript("OnEnter", show_row_tooltip)
+    toon_btn:SetScript("OnLeave", hide_row_tooltip)
 
     -- Column 2: Nickname
     local nick_text = row_frame:CreateFontString(nil, "OVERLAY")
@@ -442,6 +456,10 @@ create_roster_pane = function(parent_frame)
     row2_left:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10, -32)
     row2_left:SetWidth(235)
     row2_left:SetHeight(22)
+    row2_left:EnableMouse(true)
+    row2_left:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+    end)
     row2_left_frame = row2_left
 
     local count_str = row2_left:CreateFontString(nil, "OVERLAY")
@@ -456,6 +474,7 @@ create_roster_pane = function(parent_frame)
     filter_box:SetHeight(18)
     filter_box:SetPoint("LEFT", count_str, "RIGHT", 6, 0)
     filter_box:SetAutoFocus(false)
+    filter_box:ClearFocus()
     filter_box:SetFontObject(GameFontNormalSmall)
     filter_box:SetBackdrop({
         bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -470,6 +489,18 @@ create_roster_pane = function(parent_frame)
     filter_box:SetScript("OnTextChanged", function()
         filter_text = filter_box:GetText() or ""
         refresh_roster()
+    end)
+    filter_box:SetScript("OnEscapePressed", function()
+        local text = this:GetText()
+        this:ClearFocus()
+        if not text or text == "" then
+            if main_window then
+                main_window:Hide()
+            end
+        end
+    end)
+    filter_box:SetScript("OnEnterPressed", function()
+        this:ClearFocus()
     end)
     filter_edit = filter_box
 
@@ -487,6 +518,11 @@ create_roster_pane = function(parent_frame)
     pane_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10, -58)
     pane_frame:SetPoint("BOTTOMLEFT", parent_frame, "BOTTOMLEFT", 10, 10)
     pane_frame:SetWidth(235)
+    pane_frame:EnableMouse(true)
+    pane_frame:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
     roster_pane_frame = pane_frame
 
     -- ScrollFrame container
@@ -503,11 +539,21 @@ create_roster_pane = function(parent_frame)
     })
     scroll_frame:SetBackdropColor(0.03, 0.03, 0.03, 0.6)
     scroll_frame:SetBackdropBorderColor(0.25, 0.25, 0.25, 0.6)
+    scroll_frame:EnableMouse(true)
     scroll_frame:EnableMouseWheel(true)
+    scroll_frame:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
 
     local scroll_child = CreateFrame("Frame", nil, scroll_frame)
     scroll_child:SetWidth(231)
     scroll_child:SetHeight(220)
+    scroll_child:EnableMouse(true)
+    scroll_child:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
     scroll_frame:SetScrollChild(scroll_child)
 
     scroll_frame:SetScript("OnMouseWheel", function()
@@ -612,7 +658,7 @@ is_xsocial_editbox_target = function()
     if not chat_edit_box or not chat_edit_box:IsVisible() then
         return false
     end
-    if ChatFrameEditBox and ChatFrameEditBox:IsVisible() and not chat_edit_box_focused then
+    if not chat_edit_box_focused then
         return false
     end
     return true
@@ -745,6 +791,18 @@ hook_shift_click_insert = function()
             end
         end)
     end
+
+    -- 8. Hook WorldFrame (Clicking 3D game world clears editbox focus)
+    if WorldFrame and OzHook and OzHook.hook then
+        OzHook:hook(WorldFrame, "OnMouseDown", function()
+            if chat_edit_box and chat_edit_box_focused then
+                chat_edit_box:ClearFocus()
+            end
+            if filter_edit then
+                filter_edit:ClearFocus()
+            end
+        end)
+    end
 end
 
 -- ============================================================
@@ -758,6 +816,7 @@ create_chat_pane = function(parent_frame)
     input_box:SetHeight(22)
     input_box:SetAutoFocus(false)
     input_box:EnableMouse(true)
+    input_box:ClearFocus()
     input_box:SetFontObject(GameFontNormal)
     input_box:SetBackdrop({
         bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -770,11 +829,19 @@ create_chat_pane = function(parent_frame)
     input_box:SetBackdropColor(0.04, 0.04, 0.04, 0.9)
     input_box:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
 
+    input_box:SetScript("OnShow", function()
+        this:ClearFocus()
+    end)
+    input_box:SetScript("OnMouseDown", function()
+        this:SetFocus()
+    end)
     input_box:SetScript("OnEditFocusGained", function()
         chat_edit_box_focused = true
+        input_box:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
     end)
     input_box:SetScript("OnEditFocusLost", function()
         chat_edit_box_focused = false
+        input_box:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
     end)
 
     send_chat_input = function()
@@ -798,9 +865,16 @@ create_chat_pane = function(parent_frame)
 
     input_box:SetScript("OnEnterPressed", function()
         send_chat_input()
+        this:ClearFocus()
     end)
     input_box:SetScript("OnEscapePressed", function()
+        local text = this:GetText()
         this:ClearFocus()
+        if not text or text == "" then
+            if main_window then
+                main_window:Hide()
+            end
+        end
     end)
 
     chat_edit_box = input_box
@@ -811,6 +885,11 @@ create_chat_pane = function(parent_frame)
     local pane_frame = CreateFrame("Frame", "XSOCIAL_CHAT_WINDOW", parent_frame)
     pane_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 252, -58)
     pane_frame:SetPoint("BOTTOMRIGHT", parent_frame, "BOTTOMRIGHT", -10, 10)
+    pane_frame:EnableMouse(true)
+    pane_frame:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
     chat_pane_frame = pane_frame
     XSOCIAL_CHAT_WINDOW = pane_frame
 
@@ -835,6 +914,12 @@ create_chat_pane = function(parent_frame)
     msg_frame:SetJustifyH("LEFT")
     msg_frame:EnableMouse(true)
     msg_frame:EnableMouseWheel(true)
+    msg_frame:SetScript("OnMouseDown", function()
+        if not IsShiftKeyDown() then
+            if chat_edit_box then chat_edit_box:ClearFocus() end
+            if filter_edit then filter_edit:ClearFocus() end
+        end
+    end)
 
     if msg_frame.SetFading then
         msg_frame:SetFading(false)
@@ -950,6 +1035,14 @@ apply_compact_layout = function(compact)
     is_compact = compact
     if not main_window then return end
 
+    if chat_edit_box then
+        chat_edit_box:ClearFocus()
+    end
+    if filter_edit then
+        filter_edit:ClearFocus()
+    end
+    chat_edit_box_focused = false
+
     if is_compact then
         if top_bar_frame then top_bar_frame:Hide() end
         if row2_left_frame then row2_left_frame:Hide() end
@@ -1050,6 +1143,7 @@ create_main_window = function()
 
     local window_frame = CreateFrame("Frame", "XSocialMainWindow", UIParent)
     main_window = window_frame
+    window_frame:Hide()
 
     window_frame:SetWidth(init_w)
     window_frame:SetHeight(init_h)
@@ -1071,6 +1165,10 @@ create_main_window = function()
     window_frame:SetMovable(true)
     window_frame:EnableMouse(true)
     window_frame:RegisterForDrag("LeftButton")
+    window_frame:SetScript("OnMouseDown", function()
+        if chat_edit_box then chat_edit_box:ClearFocus() end
+        if filter_edit then filter_edit:ClearFocus() end
+    end)
     window_frame:SetScript("OnDragStart", function() this:StartMoving() end)
     window_frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
 
@@ -1147,6 +1245,13 @@ create_main_window = function()
 
     -- OnShow: Debounced roster request and stop HUD alert flashing
     window_frame:SetScript("OnShow", function()
+        if chat_edit_box then
+            chat_edit_box:ClearFocus()
+        end
+        if filter_edit then
+            filter_edit:ClearFocus()
+        end
+        chat_edit_box_focused = false
         if XSocial.HUDButton and XSocial.HUDButton.stop_flash then
             XSocial.HUDButton.stop_flash()
         end
@@ -1155,6 +1260,17 @@ create_main_window = function()
             refresh_top_bar()
             refresh_roster()
         end
+    end)
+
+    -- OnHide: Clear focus from edit boxes
+    window_frame:SetScript("OnHide", function()
+        if chat_edit_box then
+            chat_edit_box:ClearFocus()
+        end
+        if filter_edit then
+            filter_edit:ClearFocus()
+        end
+        chat_edit_box_focused = false
     end)
 
     return main_window
@@ -1173,6 +1289,13 @@ function MainWindow.show()
         create_main_window()
     end
     main_window:Show()
+    if chat_edit_box then
+        chat_edit_box:ClearFocus()
+    end
+    if filter_edit then
+        filter_edit:ClearFocus()
+    end
+    chat_edit_box_focused = false
 end
 
 function MainWindow.hide()
@@ -1280,3 +1403,17 @@ MainWindow.hook_shift_click_insert = hook_shift_click_insert
 
 hook_shift_click_insert()
 hook_chat_frame_editbox()
+
+-- Register XSocialMainWindow in UISpecialFrames so pressing ESC hides the window
+if UISpecialFrames then
+    local found = false
+    for _, name in pairs(UISpecialFrames) do
+        if name == "XSocialMainWindow" then
+            found = true
+            break
+        end
+    end
+    if not found then
+        tinsert(UISpecialFrames, "XSocialMainWindow")
+    end
+end

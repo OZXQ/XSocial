@@ -46,6 +46,9 @@ local function get_ui_font(size)
     if XSocial and XSocial.get_ui_font then
         return XSocial.get_ui_font(size)
     end
+    if GameFontNormal and GameFontNormal.GetFont then
+        return GameFontNormal:GetFont(), (size or 11)
+    end
     return "Fonts\\FRIZQT__.TTF", (size or 11)
 end
 
@@ -55,17 +58,17 @@ end
 
 restore_hud_position = function()
     if not hud_frame then return end
-    local config_data = XSocial.get_config()
+    local config_data = XSocial.get_config() or {}
     local saved_pos = config_data.buttonPos
 
     hud_frame:ClearAllPoints()
-    if saved_pos and saved_pos.point then
+    if type(saved_pos) == "table" and saved_pos.point then
         hud_frame:SetPoint(
             saved_pos.point,
             UIParent,
             saved_pos.relPoint or saved_pos.point,
-            saved_pos.x or 0,
-            saved_pos.y or 0
+            tonumber(saved_pos.x) or 0,
+            tonumber(saved_pos.y) or 0
         )
     else
         hud_frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -74,17 +77,19 @@ end
 
 save_hud_position = function()
     if not hud_frame then return end
-    local point_val, _, rel_point_val, x_val, y_val = hud_frame:GetPoint(1)
+    local point_val, rel_to, rel_point_val, x_val, y_val = hud_frame:GetPoint(1)
     if not point_val then
-        point_val, _, rel_point_val, x_val, y_val = hud_frame:GetPoint()
+        point_val, rel_to, rel_point_val, x_val, y_val = hud_frame:GetPoint()
     end
     local config_data = XSocial.get_config()
-    config_data.buttonPos = {
-        point    = point_val or "CENTER",
-        relPoint = rel_point_val or point_val or "CENTER",
-        x        = x_val or 0,
-        y        = y_val or 0,
-    }
+    if config_data then
+        config_data.buttonPos = {
+            point    = point_val or "CENTER",
+            relPoint = rel_point_val or point_val or "CENTER",
+            x        = math.floor((x_val or 0) + 0.5),
+            y        = math.floor((y_val or 0) + 0.5),
+        }
+    end
 end
 
 update_lock_visuals = function()
@@ -96,10 +101,10 @@ end
 update_hud_display = function()
     if not hud_frame or not hud_text then return end
 
-    local channel_name = XSocial.get_channel()
-    local total_count = XSocial.get_total_count()
+    local channel_name = XSocial.get_channel() or "xsocial"
+    local total_count = XSocial.get_total_count() or 0
 
-    local display_str = string.format("%s | %d", channel_name, total_count)
+    local display_str = string.format("%s | %d", tostring(channel_name), tonumber(total_count) or 0)
     hud_text:SetText(display_str)
 
     -- Dynamically adjust width to fit text comfortably with padding (handles CJK byte length safely)
@@ -108,7 +113,7 @@ update_hud_display = function()
     if approx_len_width > text_width then
         text_width = approx_len_width
     end
-    hud_frame:SetWidth(math.max(85, text_width + 18))
+    hud_frame:SetWidth(math.max(85, math.floor(text_width + 18)))
 
     update_lock_visuals()
 end
@@ -116,13 +121,12 @@ end
 create_hud_button = function()
     if hud_frame then return hud_frame end
 
-    -- Use Frame (not bare Button) so StartMoving / text positioning never crashes C++ engine
+    -- Safe dimensions: Height 24, edgeSize 8 leaves positive center area (24 - 16 = 8)
     local frame_widget = CreateFrame("Frame", "XSocialHUDButton", UIParent)
-    frame_widget:SetWidth(100)
-    frame_widget:SetHeight(22)
+    frame_widget:SetWidth(80)
+    frame_widget:SetHeight(24)
     frame_widget:SetFrameStrata("MEDIUM")
     frame_widget:SetMovable(true)
-    frame_widget:SetClampedToScreen(true)
     frame_widget:EnableMouse(true)
     frame_widget:RegisterForDrag("RightButton")
 
@@ -132,7 +136,7 @@ create_hud_button = function()
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile     = true,
         tileSize = 16,
-        edgeSize = 12,
+        edgeSize = 8,
         insets   = { left = 2, right = 2, top = 2, bottom = 2 },
     })
     frame_widget:SetBackdropColor(0.05, 0.05, 0.05, 0.75)
@@ -148,9 +152,15 @@ create_hud_button = function()
     hud_frame = frame_widget
     restore_hud_position()
 
+    -- Clamp to screen safely after valid coordinates are established
+    if frame_widget.SetClampedToScreen then
+        frame_widget:SetClampedToScreen(true)
+    end
+
     -- MouseUp: Left-Click toggles Main Window
     frame_widget:SetScript("OnMouseUp", function()
         if frame_widget._is_dragging then
+            frame_widget._is_dragging = nil
             return
         end
         if arg1 == "LeftButton" then
@@ -165,10 +175,8 @@ create_hud_button = function()
 
     -- Right-Click and Drag to move
     frame_widget:SetScript("OnDragStart", function()
-        if arg1 == "RightButton" then
-            frame_widget._is_dragging = true
-            this:StartMoving()
-        end
+        frame_widget._is_dragging = true
+        this:StartMoving()
     end)
 
     frame_widget:SetScript("OnDragStop", function()
@@ -186,11 +194,11 @@ create_hud_button = function()
                 flash_timer = 0
                 flash_state = not flash_state
                 if flash_state then
-                    this:SetBackdropColor(0.8, 0.1, 0.1, 0.85)
-                    this:SetBackdropBorderColor(1.0, 0.2, 0.2, 1.0)
+                    frame_widget:SetBackdropColor(0.8, 0.1, 0.1, 0.85)
+                    frame_widget:SetBackdropBorderColor(1.0, 0.2, 0.2, 1.0)
                 else
-                    this:SetBackdropColor(0.05, 0.05, 0.05, 0.2)
-                    this:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.2)
+                    frame_widget:SetBackdropColor(0.05, 0.05, 0.05, 0.2)
+                    frame_widget:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.2)
                 end
             end
         end
@@ -199,18 +207,18 @@ create_hud_button = function()
     -- Hover tooltip
     frame_widget:SetScript("OnEnter", function()
         if not is_flashing then
-            this:SetBackdropColor(0.12, 0.12, 0.12, 0.9)
+            frame_widget:SetBackdropColor(0.12, 0.12, 0.12, 0.9)
         end
         if GameTooltip then
-            GameTooltip:SetOwner(this, "ANCHOR_TOP")
+            GameTooltip:SetOwner(frame_widget, "ANCHOR_TOP")
             GameTooltip:ClearLines()
             GameTooltip:SetText(L["XSocial"])
 
-            local chan_name = XSocial.get_channel()
-            local total_count = XSocial.get_total_count()
+            local chan_name = XSocial.get_channel() or "xsocial"
+            local total_count = XSocial.get_total_count() or 0
 
-            GameTooltip:AddLine(string.format(L["Channel: %s"], chan_name), 1, 0.82, 0)
-            GameTooltip:AddLine(string.format(L["Online: %d"], total_count), 0.9, 0.9, 0.9)
+            GameTooltip:AddLine(string.format(L["Channel: %s"], tostring(chan_name)), 1, 0.82, 0)
+            GameTooltip:AddLine(string.format(L["Online: %d"], tonumber(total_count) or 0), 0.9, 0.9, 0.9)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(L["Left-click: Toggle Window  |  Right-click: Drag"], 0.6, 0.6, 0.6)
             GameTooltip:Show()
@@ -219,7 +227,7 @@ create_hud_button = function()
 
     frame_widget:SetScript("OnLeave", function()
         if not is_flashing then
-            this:SetBackdropColor(0.05, 0.05, 0.05, 0.75)
+            frame_widget:SetBackdropColor(0.05, 0.05, 0.05, 0.75)
             update_lock_visuals()
         end
         if GameTooltip then

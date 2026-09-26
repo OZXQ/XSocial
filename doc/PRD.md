@@ -291,7 +291,7 @@ When querying a character that may not have XSocial installed, clicking `[?]` tr
     - Nickname pill + `[⚙]`.
     - Note pill + `[⚙]` (displays current character's note).
     - `[C]` Compact Mode toggle button (left of `[X]`).
-    - Close `[X]` button.
+    - Close `[X]` button (also closes on Escape key via `UISpecialFrames`).
     - No redundant text labels (`Channel:`, `Nick:`, `Note:`).
 - **F4.3 Row 2 — Controls & Chat Input**:
   - Left sub-bar (235px):

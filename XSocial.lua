@@ -138,6 +138,9 @@ init_config = function()
     if not XSocialDB.roster then XSocialDB.roster = {} end
     if not XSocialDB.lastPoll then XSocialDB.lastPoll = 0 end
     if not XSocialConfig.notes then XSocialConfig.notes = {} end
+    if type(XSocialConfig.buttonPos) ~= "table" or not XSocialConfig.buttonPos.point then
+        XSocialConfig.buttonPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 }
+    end
 end
 
 is_channel_match = function(chan_str, target_name)
@@ -907,9 +910,12 @@ function XSocial.get_channel_index(channel_name)
 end
 
 function XSocial.get_ui_font(size)
-    local font_file = STANDARD_TEXT_FONT
-    if (not font_file or font_file == "") and GameFontNormal and GameFontNormal.GetFont then
+    local font_file = nil
+    if GameFontNormal and GameFontNormal.GetFont then
         font_file = GameFontNormal:GetFont()
+    end
+    if not font_file or font_file == "" then
+        font_file = STANDARD_TEXT_FONT
     end
     if not font_file or font_file == "" then
         font_file = "Fonts\\FRIZQT__.TTF"
