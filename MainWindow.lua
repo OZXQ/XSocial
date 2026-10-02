@@ -1,7 +1,7 @@
 -- MainWindow.lua
 -- Dual-Pane Main Window for XSocial
 -- Merged Top Bar: Channel [⚙], Nickname [⚙], Note [⚙], Close [X]
--- Left Pane (~240px): Scrollable roster with click-to-whisper, compact [?] inquire, hover tooltips, and bottom search/online count
+-- Left Pane (~120px): Scrollable roster with click-to-whisper, compact [?] inquire, hover tooltips, and bottom search/online count
 -- Right Pane (~370px): Dedicated channel chat with full color/link support for items, quests, spells, and player whisper links
 -- Strictly Lua 5.0, Vanilla WoW 1.12 API only
 
@@ -27,7 +27,7 @@ local chat_pane_frame = nil
 local row2_left_frame = nil
 local compact_btn = nil
 local is_compact = false
-local LEFT_PANEL_WIDTH = 242
+local LEFT_PANEL_WIDTH = 121
 
 -- Roster scroll & frame recycling pool
 local roster_scroll = nil
@@ -321,7 +321,7 @@ refresh_top_bar = function()
 end
 
 -- ============================================================
--- Left Pane: Member Roster & Search (~235px wide)
+-- Left Pane: Member Roster & Search (~116px wide)
 -- ============================================================
 get_or_create_row = function(index_num, parent_child, row_width, row_height)
     if row_pool[index_num] then
@@ -343,16 +343,26 @@ get_or_create_row = function(index_num, parent_child, row_width, row_height)
     end
     row_frame._bg = row_bg
 
-    -- Column 1: Toon Name (Clickable to whisper)
+    -- Compact [?] Inquire Button (Always visible on right)
+    local inquire_btn = CreateFrame("Button", nil, row_frame, "UIPanelButtonTemplate")
+    inquire_btn:SetWidth(16)
+    inquire_btn:SetHeight(16)
+    inquire_btn:SetPoint("RIGHT", row_frame, "RIGHT", -2, 0)
+    inquire_btn:SetText("?")
+    row_frame._inquire_btn = inquire_btn
+
+    -- Merged Character Name + Nickname: TOONNAME<NICKNAME> (Clickable to whisper)
     local toon_btn = CreateFrame("Button", nil, row_frame)
-    toon_btn:SetWidth(105)
+    toon_btn:SetPoint("LEFT", row_frame, "LEFT", 3, 0)
+    toon_btn:SetPoint("RIGHT", inquire_btn, "LEFT", -2, 0)
     toon_btn:SetHeight(row_height)
-    toon_btn:SetPoint("LEFT", row_frame, "LEFT", 4, 0)
 
     local toon_text = toon_btn:CreateFontString(nil, "OVERLAY")
     toon_text:SetFont(get_ui_font(11))
     toon_text:SetTextColor(0.9, 0.9, 0.9)
     toon_text:SetPoint("LEFT", toon_btn, "LEFT", 0, 0)
+    toon_text:SetPoint("RIGHT", toon_btn, "RIGHT", 0, 0)
+    toon_text:SetJustifyH("LEFT")
     row_frame._toon_text = toon_text
     row_frame._toon_btn = toon_btn
 
@@ -419,20 +429,6 @@ get_or_create_row = function(index_num, parent_child, row_width, row_height)
     toon_btn:SetScript("OnEnter", show_row_tooltip)
     toon_btn:SetScript("OnLeave", hide_row_tooltip)
 
-    -- Column 2: Nickname
-    local nick_text = row_frame:CreateFontString(nil, "OVERLAY")
-    nick_text:SetFont(get_ui_font(11))
-    nick_text:SetPoint("LEFT", toon_btn, "RIGHT", 4, 0)
-    row_frame._nick_text = nick_text
-
-    -- Column 3: Compact [?] Inquire Button (Always visible)
-    local inquire_btn = CreateFrame("Button", nil, row_frame, "UIPanelButtonTemplate")
-    inquire_btn:SetWidth(18)
-    inquire_btn:SetHeight(18)
-    inquire_btn:SetPoint("RIGHT", row_frame, "RIGHT", -4, 0)
-    inquire_btn:SetText("?")
-    row_frame._inquire_btn = inquire_btn
-
     inquire_btn:SetScript("OnClick", function()
         local target_name = row_frame._char_name
         if target_name and target_name ~= "" then
@@ -454,7 +450,7 @@ create_roster_pane = function(parent_frame)
     -- Row 2 Left Sub-bar: Online count, Search EditBox, Refresh button
     local row2_left = CreateFrame("Frame", nil, parent_frame)
     row2_left:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10, -32)
-    row2_left:SetWidth(235)
+    row2_left:SetWidth(116)
     row2_left:SetHeight(22)
     row2_left:EnableMouse(true)
     row2_left:SetScript("OnMouseDown", function()
@@ -462,17 +458,56 @@ create_roster_pane = function(parent_frame)
     end)
     row2_left_frame = row2_left
 
-    local count_str = row2_left:CreateFontString(nil, "OVERLAY")
+    -- Online count badge with tooltip
+    local count_frame = CreateFrame("Frame", nil, row2_left)
+    count_frame:SetPoint("LEFT", row2_left, "LEFT", 2, 0)
+    count_frame:SetWidth(24)
+    count_frame:SetHeight(18)
+    count_frame:EnableMouse(true)
+
+    local count_str = count_frame:CreateFontString(nil, "OVERLAY")
     count_str:SetFont(get_ui_font(10))
     count_str:SetTextColor(0.7, 0.7, 0.7)
-    count_str:SetPoint("LEFT", row2_left, "LEFT", 2, 0)
-    count_str:SetText(string.format(L["Online: %d"], 0))
+    count_str:SetPoint("LEFT", count_frame, "LEFT", 0, 0)
+    count_str:SetText("[0]")
     online_label = count_str
 
+    count_frame:SetScript("OnEnter", function()
+        if GameTooltip then
+            GameTooltip:SetOwner(this, "ANCHOR_TOP")
+            GameTooltip:SetText(string.format(L["Online: %d"], XSocial.get_total_count() or 0))
+            GameTooltip:Show()
+        end
+    end)
+    count_frame:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    -- Refresh button on the right
+    local ref_btn = CreateFrame("Button", nil, row2_left, "UIPanelButtonTemplate")
+    ref_btn:SetWidth(18)
+    ref_btn:SetHeight(18)
+    ref_btn:SetPoint("RIGHT", row2_left, "RIGHT", -2, 0)
+    ref_btn:SetText("R")
+    ref_btn:SetScript("OnClick", function()
+        XSocial.do_poll()
+    end)
+    ref_btn:SetScript("OnEnter", function()
+        if GameTooltip then
+            GameTooltip:SetOwner(this, "ANCHOR_TOP")
+            GameTooltip:SetText(L["Refresh"])
+            GameTooltip:Show()
+        end
+    end)
+    ref_btn:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    -- Search EditBox in middle (auto-fits space between count and refresh)
     local filter_box = CreateFrame("EditBox", nil, row2_left)
-    filter_box:SetWidth(95)
+    filter_box:SetPoint("LEFT", count_frame, "RIGHT", 3, 0)
+    filter_box:SetPoint("RIGHT", ref_btn, "LEFT", -3, 0)
     filter_box:SetHeight(18)
-    filter_box:SetPoint("LEFT", count_str, "RIGHT", 6, 0)
     filter_box:SetAutoFocus(false)
     filter_box:ClearFocus()
     filter_box:SetFontObject(GameFontNormalSmall)
@@ -502,22 +537,23 @@ create_roster_pane = function(parent_frame)
     filter_box:SetScript("OnEnterPressed", function()
         this:ClearFocus()
     end)
-    filter_edit = filter_box
-
-    local ref_btn = CreateFrame("Button", nil, row2_left, "UIPanelButtonTemplate")
-    ref_btn:SetWidth(48)
-    ref_btn:SetHeight(18)
-    ref_btn:SetPoint("RIGHT", row2_left, "RIGHT", -2, 0)
-    ref_btn:SetText(L["Refresh"])
-    ref_btn:SetScript("OnClick", function()
-        XSocial.do_poll()
+    filter_box:SetScript("OnEnter", function()
+        if GameTooltip then
+            GameTooltip:SetOwner(this, "ANCHOR_TOP")
+            GameTooltip:SetText(L["Filter:"])
+            GameTooltip:Show()
+        end
     end)
+    filter_box:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    filter_edit = filter_box
 
     -- Row 3 Left Pane: Member Roster Panel
     local pane_frame = CreateFrame("Frame", nil, parent_frame)
     pane_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10, -58)
     pane_frame:SetPoint("BOTTOMLEFT", parent_frame, "BOTTOMLEFT", 10, 10)
-    pane_frame:SetWidth(235)
+    pane_frame:SetWidth(116)
     pane_frame:EnableMouse(true)
     pane_frame:SetScript("OnMouseDown", function()
         if chat_edit_box then chat_edit_box:ClearFocus() end
@@ -547,7 +583,7 @@ create_roster_pane = function(parent_frame)
     end)
 
     local scroll_child = CreateFrame("Frame", nil, scroll_frame)
-    scroll_child:SetWidth(231)
+    scroll_child:SetWidth(112)
     scroll_child:SetHeight(220)
     scroll_child:EnableMouse(true)
     scroll_child:SetScript("OnMouseDown", function()
@@ -579,7 +615,11 @@ refresh_roster = function()
     local total_count = XSocial.get_total_count() or 0
 
     if online_label then
-        online_label:SetText(string.format(L["Online: %d"], total_count))
+        online_label:SetText(string.format("[%d]", total_count))
+        local parent_frame = online_label:GetParent()
+        if parent_frame and parent_frame.SetWidth and online_label.GetStringWidth then
+            parent_frame:SetWidth(math.max(20, online_label:GetStringWidth() + 2))
+        end
     end
 
     -- Filter and sort members
@@ -598,7 +638,7 @@ refresh_roster = function()
 
     local item_count = table.getn(items)
     local row_height = 22
-    local row_width = 231
+    local row_width = 112
     local total_height = math.max(item_count * row_height + 4, roster_scroll:GetHeight() or 220)
     roster_child:SetHeight(total_height)
 
@@ -607,23 +647,23 @@ refresh_roster = function()
     for idx = 1, item_count do
         local member_name = items[idx]
         local row_widget = get_or_create_row(idx, roster_child, row_width, row_height)
+        row_widget:SetWidth(row_width)
         row_widget._char_name = member_name
 
-        -- Column 1: Character Name
-        row_widget._toon_text:SetText(member_name)
-
-        -- Column 2: Nickname
+        -- Merged Toon + Nick Name: TOONNAME<NICKNAME>
         local p = XSocial.get_player(member_name)
         local known_nick = p and p.nick
         if known_nick and known_nick ~= "" then
-            row_widget._nick_text:SetText(known_nick)
-            row_widget._nick_text:SetTextColor(1, 0.82, 0) -- gold
+            row_widget._toon_text:SetText(member_name .. "|cffffd200<" .. known_nick .. ">|r")
         else
-            row_widget._nick_text:SetText("-")
-            row_widget._nick_text:SetTextColor(0.55, 0.55, 0.55) -- grey
+            row_widget._toon_text:SetText(member_name)
         end
 
-        -- Column 3: Inquire Button reset
+        if row_widget._nick_text then
+            row_widget._nick_text:Hide()
+        end
+
+        -- Inquire Button reset
         row_widget._inquire_btn:SetText("?")
         row_widget._inquire_btn:Enable()
         row_widget._inquire_btn:Show()
@@ -811,7 +851,7 @@ end
 create_chat_pane = function(parent_frame)
     -- Row 2 Right Sub-bar: Chat Input EditBox (Full width, Enter sends message)
     local input_box = CreateFrame("EditBox", "XSocialChatEditBox", parent_frame)
-    input_box:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 252, -32)
+    input_box:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10 + LEFT_PANEL_WIDTH, -32)
     input_box:SetPoint("TOPRIGHT", parent_frame, "TOPRIGHT", -10, -32)
     input_box:SetHeight(22)
     input_box:SetAutoFocus(false)
@@ -881,9 +921,9 @@ create_chat_pane = function(parent_frame)
     XSocial.chat_edit_box = input_box
     XSocialChatEditBox = input_box
 
-    -- Row 3 Right Pane: Dedicated Chat Window (~365px wide)
+    -- Row 3 Right Pane: Dedicated Chat Window
     local pane_frame = CreateFrame("Frame", "XSOCIAL_CHAT_WINDOW", parent_frame)
-    pane_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 252, -58)
+    pane_frame:SetPoint("TOPLEFT", parent_frame, "TOPLEFT", 10 + LEFT_PANEL_WIDTH, -58)
     pane_frame:SetPoint("BOTTOMRIGHT", parent_frame, "BOTTOMRIGHT", -10, 10)
     pane_frame:EnableMouse(true)
     pane_frame:SetScript("OnMouseDown", function()
@@ -1066,15 +1106,15 @@ apply_compact_layout = function(compact)
 
         if chat_edit_box then
             chat_edit_box:ClearAllPoints()
-            chat_edit_box:SetPoint("TOPLEFT", main_window, "TOPLEFT", 252, -32)
+            chat_edit_box:SetPoint("TOPLEFT", main_window, "TOPLEFT", 10 + LEFT_PANEL_WIDTH, -32)
             chat_edit_box:SetPoint("TOPRIGHT", main_window, "TOPRIGHT", -10, -32)
         end
         if chat_pane_frame then
             chat_pane_frame:ClearAllPoints()
-            chat_pane_frame:SetPoint("TOPLEFT", main_window, "TOPLEFT", 252, -58)
+            chat_pane_frame:SetPoint("TOPLEFT", main_window, "TOPLEFT", 10 + LEFT_PANEL_WIDTH, -58)
             chat_pane_frame:SetPoint("BOTTOMRIGHT", main_window, "BOTTOMRIGHT", -10, 10)
         end
-        main_window:SetMinResize(450, 300)
+        main_window:SetMinResize(350, 300)
         refresh_top_bar()
         refresh_roster()
     end
@@ -1107,7 +1147,7 @@ toggle_compact_mode = function()
 
         local full_w = (XSocialConfig and XSocialConfig.windowWidth) or (main_window:GetWidth() + LEFT_PANEL_WIDTH)
         local full_h = (XSocialConfig and XSocialConfig.windowHeight) or main_window:GetHeight()
-        if full_w < 450 then full_w = 450 end
+        if full_w < 350 then full_w = 350 end
         if full_h < 300 then full_h = 300 end
 
         apply_compact_layout(false)
@@ -1128,9 +1168,9 @@ create_main_window = function()
 
     local is_start_compact = (XSocialConfig and XSocialConfig.isCompact) and true or false
 
-    local full_w = (XSocialConfig and XSocialConfig.windowWidth) or 620
+    local full_w = (XSocialConfig and XSocialConfig.windowWidth) or 500
     local full_h = (XSocialConfig and XSocialConfig.windowHeight) or 360
-    if full_w < 450 then full_w = 450 end
+    if full_w < 350 then full_w = 350 end
     if full_h < 300 then full_h = 300 end
 
     local compact_w = (XSocialConfig and XSocialConfig.compactWidth) or (full_w - LEFT_PANEL_WIDTH)
@@ -1176,7 +1216,7 @@ create_main_window = function()
     if is_start_compact then
         window_frame:SetMinResize(200, 200)
     else
-        window_frame:SetMinResize(450, 300)
+        window_frame:SetMinResize(350, 300)
     end
     window_frame:SetMaxResize(1200, 900)
 

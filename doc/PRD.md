@@ -1,57 +1,74 @@
 # XSocial — Cross-Guild Channel Communication Addon PRD
 
-Version: 0.5.0  |  Platform: Turtle WoW / Vanilla (Interface 11200)  |  Status: Approved Specification
+Version: 0.6.0  |  Platform: Turtle WoW / Vanilla (Interface 11200)  |  Status: Draft Specification
 
 ---
 
 ## 1. Overview
 XSocial is a lightweight Turtle WoW / Vanilla 1.12 addon designed for cross-guild friend circles, alts, and multi-account players communicating via a shared custom chat channel.
 
-Vanilla WoW 1.12 provides no built-in channel join/leave notifications, and standard `SendAddonMessage` does not support custom chat channels (`"CHANNEL"` distribution was only introduced in later expansions). XSocial addresses these platform constraints with a **Targeted, Zero-Storm Protocol & Dedicated Social Hub**:
-- Players announce their presence with their nickname, location, and a personal toon-specific note (`#NICK#ZONE#NOTE#`) upon logging in, switching channels, or updating information.
-- A targeted inquiry protocol (`#whois# <Toon>`) lets players discover unknown members on demand, answered strictly by the queried player.
-- For players without XSocial, an optional best-effort `/who` fallback discovers their level, class, and zone.
-- All channel conversation is centralized inside XSocial's dedicated Chat Window on the right panel, featuring full hyperlink interactivity (items, quests, spells, and player whisper links).
-- Nicknames are account-wide, while player notes are stored per-toon. All metadata is persisted in `SavedVariables` under a unified data model (`XSocialDB.version = 1`).
+Vanilla WoW 1.12 provides no built-in channel join/leave notifications, and standard `SendAddonMessage` does not support custom chat channels (`"CHANNEL"` distribution was only introduced in later expansions). XSocial addresses these platform constraints with a **Decoupled Dual-Channel Architecture & Zero-Storm Base64 Protocol**:
+- **Pure Human Chat Channel (`XSocialConfig.channel`, e.g. `xsocial`)**: Exclusively reserved for human conversation. Zero protocol messages are ever sent to this channel, completely eliminating chat pollution and the need for chat suppression hooks.
+- **Dedicated Addon Message Channel (`TWB`)**: All presence announcements and inquiries are transmitted over the existing, clean addon channel `TWB`.
+- **Eye-Unreadable Base64 Obfuscation (`XS1:<base64>`)**: All protocol packets on `TWB` are encoded with standard Base64 and namespaced with an `XS1:` prefix. Casual readers on the channel see only non-human-readable ASCII strings, and other addons ignore XSocial packets.
+- **Targeted Discovery Protocol**: Announcements are broadcasted upon login, channel switch, or info updates (`ANN\t<NICK>\t<ZONE>\t<NOTE>`). Targeted inquiries (`INQ\t<Toon>`) are answered strictly by the queried player.
+- **Best-Effort `/who` Fallback**: For players without XSocial, an optional fallback discovers their level, class, and zone.
+- **Dedicated Chat Window**: Centralized inside XSocial's dedicated Chat Window on the right panel, featuring full hyperlink interactivity (items, quests, spells, and player whisper links).
+- **Unified Data Model**: Nicknames are account-wide, while player notes are stored per-toon. All metadata is persisted in `SavedVariables` under `XSocialDB.version = 1`.
 
 The user interface features:
 1. A **minimalist floating HUD status button** displaying `<ChannelName> | <TotalCount>` (e.g. `maidou | 20`). Strictly shows total channel online count.
-2. A **dual-pane Main Window (~620px wide × 360px high)**:
-   - **Merged Top Bar**: Channel `[⚙]`, Nickname `[⚙]`, Note `[⚙]`, HUD `[Lock]`, and `[X]` (no redundant labels).
-   - **Left Pane (Roster & Search, ~240px)**:
-     - Scrollable member roster with Toon name (click to whisper `/w <Toon> `), Nickname (gold), and compact `[?]` inquire button.
+2. A **dual-pane Main Window (~500px wide × 360px high, min size 350x300)**:
+   - **Merged Top Bar**: Channel `[⚙]`, Nickname `[⚙]`, Note `[⚙]`, HUD `[Lock]`, `[C]` Compact toggle, and `[X]`.
+   - **Left Pane (Roster & Search, ~116px)**:
+     - Compact scrollable roster with merged `TOONNAME<NICKNAME>` (gold nickname, click to whisper `/w <Toon> `) and compact `[?]` inquire button.
      - Rich hover tooltip showing Toon, Nickname, Level & Class, Location, and Note.
-     - Bottom bar: Total online count (`Online: %d`) and Search/Filter box.
-   - **Right Pane (Dedicated Channel Chat, ~380px)**:
-     - `ScrollingMessageFrame` showing channel conversation with full item/quest/spell/player hyperlink and color support.
-     - Protocol messages (`#whois#`, `#NICK#ZONE#NOTE#`) are silently consumed for sync and never shown.
+     - Top sub-bar: Compact online count badge `[count]` with tooltip, auto-fitting Search/Filter box, and `[R]` refresh button.
+   - **Right Pane (Dedicated Channel Chat, dynamically expanded)**:
+     - `ScrollingMessageFrame` showing pure channel conversation with full item/quest/spell/player hyperlink and color support.
+     - 100% human chat: No protocol messages or filter tags ever enter this channel.
      - Real chat replaces Toon names with Nicknames as clickable player links (`|Hplayer:Toon|h[Nick]|h`) to allow easy whispering.
-     - Bottom chat input box + `[Send]` button (and Enter key) to talk directly into the channel.
+     - Bottom chat input box (and Enter key) to talk directly into the channel.
 
 ---
 
 ## 2. Background & Architecture Decisions
 
-### 2.1 WoW 1.12 Platform Constraints
+### 2.1 WoW 1.12 Platform Constraints & Dual-Channel Model
 - **Custom Channel Limitations**: Custom channels do not emit presence events; roster discovery relies on `/chatlist` / `GetChannelRosterInfo`.
-- **Addon Messaging Scope**: In WoW 1.12, `SendAddonMessage` is restricted to `"PARTY"`, `"RAID"`, `"GUILD"`, and `"BATTLEGROUND"`. Cross-guild channels **must** communicate over the custom channel itself.
+- **Addon Messaging Scope**: In WoW 1.12, `SendAddonMessage` is restricted to `"PARTY"`, `"RAID"`, `"GUILD"`, and `"BATTLEGROUND"`. It cannot broadcast across arbitrary channels or guilds.
+- **Decoupled Dual-Channel Model**:
+  - Previous designs mixed protocol messages (`#whois#`, `#NICK#ZONE#NOTE#`) directly into the user's chat channel (`xsocial`), requiring invasive hooks to hide protocol spam from the player's Blizzard chat frames.
+  - Architecture v0.6.0 separates user chat from addon metadata:
+    - **User Chat Channel (`XSocialConfig.channel`)**: 100% human chat.
+    - **Addon Message Channel (`TWB`)**: Dedicated background channel for addon metadata synchronization.
 - **Account-Wide Storage Boundary & Per-Toon Notes**:
   - `SavedVariables` in 1.12 are scoped per WoW login account (`WTF\Account\<ACCOUNT>\SavedVariables`).
   - **Account-wide Nickname**: The player has one nickname representing the human player behind the account (`XSocialConfig.nickname`).
   - **Per-Toon Notes**: Each character on the account can have a different spec/role (e.g. Priest is "Holy Healer", Warrior is "Prot Tank"). Notes are stored per toon in `XSocialConfig.notes = { [toonName] = note }`.
 
-### 2.2 Chat Visibility & Dedicated Chat Window
-- XSocial provides a dedicated chat window inside its Main Window to host the channel conversation with rich formatting (nicknames, clickable item links, etc.).
-- **User-Managed ChatFrame Subscriptions**: XSocial does NOT forcibly alter or remove channels from the user's default `ChatFrame1`. Users who wish to keep their main chat box clean can manage their own ChatFrame channel subscriptions via standard game settings.
+### 2.2 Eye-Unreadable Base64 Obfuscation on `TWB`
+- `TWB` is an established, active channel for addon messaging in the community (much cleaner and quieter than `LFT`).
+- To prevent raw text pollution and ensure messages are completely unreadable to the human eye on `TWB`, all XSocial packets are encoded in standard Base64:
+  - Envelope: `XS1:<base64-string>` (e.g. `XS1:QU5OCeaWsOaJiAlJcm9uZm9yZ2UJTUMgSGVhbGVy`).
+  - The `XS1:` prefix acts as an unambiguous namespace identifier:
+    - Other addons and casual players on `TWB` ignore XSocial packets.
+    - XSocial immediately drops any message on `TWB` that does not start with `XS1:`.
+  - Base64 is lightweight and requires zero cryptographic key exchange, providing seamless out-of-the-box plug-and-play operation.
 
-### 2.3 Eliminating Network & Message Storms
+### 2.3 Elimination of Chat Suppression Hooks
+- Because protocol messages are strictly sent to `TWB`, the user's `xsocial` channel never contains protocol noise.
+- **Hook Removal**: The `ChatFrame_OnEvent` hook previously required to suppress `#whois#` and protocol lines from Blizzard's default chat frames is completely deleted.
+- Non-addon players chatting in `xsocial` see pure conversation without protocol leaks.
+
+### 2.4 Eliminating Network & Message Storms
 - **The "Who is Asked is Who Replies" Rule**: 
   - Login broadcast is limited to a single announcement.
-  - Inquiries are directed individually (`#whois# <Toon>`).
+  - Inquiries are directed individually (`INQ\t<Toon>`).
   - **Only the queried player (`UnitName("player") == Toon`) responds.** All other clients remain silent.
   - Exactly 1 query produces at most 1 reply. Total traffic is 100% predictable and immune to storms.
 
-### 2.4 Best-Effort `/who` Fallback Architecture
+### 2.5 Best-Effort `/who` Fallback Architecture
 When querying a character that may not have XSocial installed, clicking `[?]` triggers a `/who` query with safety guards:
 - **Server Rate Limiting**: Throttled to at most **one `/who` request every 5 seconds**.
 - **Full Roster Scan**: Listens for `WHO_LIST_UPDATE` and loops `for i = 1, GetNumWhoResults() do` to find an exact case-insensitive match on the queried toon name.
@@ -64,26 +81,30 @@ When querying a character that may not have XSocial installed, clicking `[?]` tr
 
 ### Goals
 - **G1. Unified Player Data Model**: Store character records in `XSocialDB.players[toonName]` under schema version 1.
-- **G2. Zero-Storm Targeted Synchronization**:
-  - Broadcast `#NICK#ZONE#NOTE#` upon channel join, nickname change, or note change.
-  - Targeted `#whois# <Toon>` inquiries answered exclusively by `<Toon>`.
-  - Protocol traffic is silently consumed and never displayed in the chat window.
-- **G3. Streamlined HUD Button**:
+- **G2. Zero-Storm Targeted Synchronization via `TWB`**:
+  - Broadcast Base64-obfuscated announcements (`XS1:<base64>`) over dedicated addon channel `TWB` upon channel join, nickname change, or note change.
+  - Targeted inquiries (`INQ\t<Toon>`) answered exclusively by `<Toon>` over `TWB`.
+  - Protocol traffic is completely decoupled from the user's chat channel (`xsocial`), keeping user chat 100% pure.
+- **G3. Hook-Free Clean Chat Experience**:
+  - Eliminate all chat suppression hooks on `ChatFrame_OnEvent`.
+  - Zero risk of protocol leakage to non-addon users or default Blizzard chat frames.
+- **G4. Streamlined HUD Button**:
   - Displays `<ChannelName> | <TotalCount>` (e.g. `maidou | 20`). Strictly shows total channel online count.
   - Left-Click: Toggles Main Window.
   - Right-Click: Toggles Main Window.
   - Repositioning via Config Lock/Unlock toggle.
-- **G4. Dual-Pane Main Window (~620px × 360px)**:
-  - Merged Top Bar: Channel `[⚙]`, Nickname `[⚙]`, Note `[⚙]`, HUD `[Lock]`, `[X]`.
-  - Left Pane (Roster): Scrollable member list with Toon name (whisper link), Nickname, and `[?]` button.
+- **G5. Dual-Pane Main Window (~500px × 360px, min 350x300)**:
+  - Merged Top Bar: Channel `[⚙]`, Nickname `[⚙]`, Note `[⚙]`, HUD `[Lock]`, `[C]`, `[X]`.
+  - Left Pane (Roster, ~116px): Compact scrollable roster with merged `TOONNAME<NICKNAME>` (whisper link, gold nickname) and compact `[?]` button.
+  - Left Sub-Bar: Compact online badge `[count]` with tooltip, auto-fitting Search/Filter box, and `[R]` refresh button.
   - Row Hover Tooltips: Toon name, Nickname, Level & Class, Location, Note.
-  - Bottom Bar (Left): Total online count (`Online: %d`) and Search/Filter box.
-  - Right Pane (Dedicated Chat): `ScrollingMessageFrame` replacing Toon names with clickable Nickname links (`|Hplayer:Toon|h[Nick]|h`), clickable item/quest/spell links, bottom channel chat input box and `[Send]` button.
-- **G5. Diagnostics & Debug Mode**:
+  - Right Pane (Dedicated Chat): `ScrollingMessageFrame` replacing Toon names with clickable Nickname links (`|Hplayer:Toon|h[Nick]|h`), clickable item/quest/spell links, bottom channel chat input box (Enter key to send).
+- **G6. Diagnostics & Debug Mode**:
   - Slash command `/xsocial debug` to inspect protocol packets and channel state in real time.
 
 ### Non-Goals
 - No forced removal of channels from `ChatFrame1` (user manages their own chat channels).
+- No cryptographic encryption keys (Base64 is strictly for eye-unreadable obfuscation without key exchange overhead).
 - No "known/total" ratio on the HUD button (strictly total online count).
 - No circular Minimap button.
 - No external binary dependencies or non-standard Lua.
@@ -96,23 +117,23 @@ When querying a character that may not have XSocial installed, clicking `[?]` tr
    - Player opens Main Window, clicks `[⚙]` next to Nickname to enter `"杰斯"`.
    - Clicks `[⚙]` next to Note to enter `"MC Healer / Main"`. (Saved specifically for this toon in `XSocialConfig.notes`).
    - Clicks `[⚙]` next to Channel to enter `"maidou"`.
-   - Addon joins `maidou` and announces `#杰斯# Ironforge #MC Healer / Main#`.
+   - Addon joins `maidou` for chat, joins `TWB` for addon sync, and broadcasts Base64 presence over `TWB`.
 2. **Channel Presence & Passive Discovery**:
-   - Player logs in; addon announces `#NICK#ZONE#NOTE#`.
-   - Other XSocial clients capture sender's nickname, location, and note into `XSocialDB.players[sender]`.
-   - The message is consumed silently by the addon and does not display as chat text.
+   - Player logs in; addon announces presence on `TWB` as `XS1:<base64(ANN\t杰斯\tIronforge\tMC Healer / Main)>`.
+   - Other XSocial clients listening on `TWB` decode the packet and capture sender's nickname, location, and note into `XSocialDB.players[sender]`.
+   - Zero traffic appears in the `maidou` chat channel.
 3. **Dedicated In-Addon Chat & Hyperlinks**:
    - Player opens Main Window. Right pane displays messages from `#maidou`.
    - Sender appears as their Nickname: `|cffffd100[杰斯]|r: Anyone for Stratholme?`
    - Someone links an item: `|cffa335ee|Hitem:19019:0:0:0|h[Thunderfury]|h|r`. It displays in purple.
    - Player clicks `[Thunderfury]`; item tooltip opens immediately. Ctrl-click previews dressing room.
    - Player clicks `[杰斯]`; chat box opens `/w Jeyth `.
-   - Player types in the bottom input box and hits Enter; message is sent straight to the channel and appears in the right pane.
+   - Player types in the bottom input box and hits Enter; message is sent straight to the `#maidou` channel and appears in the right pane.
 4. **Inquiring Unknown Members via Dual-Track**:
-   - Player clicks `[?]` next to `Alex`.
-   - Addon sends `#whois# Alex` and queues `SendWho('n-"Alex"')`.
-   - If Alex has XSocial: Alex's client replies with `#老王# Stormwind #Warrior Tank#`. Roster updates immediately.
-   - If Alex lacks XSocial: `WHO_LIST_UPDATE` returns `Level 60 Warrior, Stormwind`. Alex's row updates with location and level, while nickname remains `-`.
+   - Player clicks `[?]` next to `Alex` in the merged roster row `Alex<- >`.
+   - Addon sends `XS1:<base64(INQ\tAlex)>` over `TWB` and queues `SendWho('n-"Alex"')`.
+   - If Alex has XSocial: Alex's client replies over `TWB` with `XS1:<base64(ANN\t老王\tStormwind\tWarrior Tank)>`. Alex's row updates to `Alex<老王>` immediately.
+   - If Alex lacks XSocial: `WHO_LIST_UPDATE` returns `Level 60 Warrior, Stormwind`. Alex's row tooltip updates with location and level, while nickname remains `-`.
 5. **HUD Button Glance**:
    - HUD button displays `maidou | 20` (showing 20 members online in the channel).
    - Click toggles the Main Window.
@@ -128,8 +149,8 @@ When querying a character that may not have XSocial installed, clicking `[?]` tr
   XSocialConfig = {
       nickname     = "杰斯",                                    -- Account-wide nickname
       notes        = { ["Jeyth"] = "MC Healer / Main" },         -- Per-toon notes table
-      channel      = "maidou",
-      channelPwd   = "",
+      channel      = "maidou",                                   -- User chat channel
+      addonChannel = "TWB",                                      -- Dedicated background addon channel
       pollInterval = 300,
       locked       = true,
       buttonPos    = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 200, y = -100 },
@@ -155,49 +176,65 @@ When querying a character that may not have XSocial installed, clicking `[?]` tr
   - `XSocial.set_my_note(val)`: sets `XSocialConfig.notes[UnitName("player")] = val`
 
 - **F1.3 Input Validation & Sanitization**:
-  - **Nickname**: 1 to 24 bytes. Reject `#` and `|`.
-  - **Note**: 0 to 128 bytes (~42 Chinese characters). Reject `#` and `|`.
-  - **Zone**: Sanitized from `GetZoneText()`, stripping any `#` or `|`.
+  - **Nickname**: 1 to 24 bytes. Reject `\t`, `|`, and control characters.
+  - **Note**: 0 to 128 bytes (~42 Chinese characters). Reject `\t` and `|`.
+  - **Zone**: Sanitized from `GetZoneText()`, stripping control characters.
 
 ---
 
-### F2. Protocol Reference & Communication
+### F2. Protocol Reference & Dual-Channel Communication
 
 #### Protocol Specification:
 
-| Message Type | Format | Trigger | Response | Receiver Action |
-| :--- | :--- | :--- | :--- | :--- |
-| **Announcement** | `#<NICK># <ZONE> #<NOTE>#` | Channel join, Nick change, Note change | None | Updates `nick`, `zone`, `note` in `players[sender]`. Silently consumed. |
-| **Inquiry** | `#whois# <Toon>` | Player clicks `[?]` | Target replies with Announcement if `UnitName("player") == Toon` | Silently consumed. |
-| **Normal Chat** | Any regular text | Player types in chat input box | None | Formats sender with Nickname link and displays in right pane. |
+| Message Type | Channel | Envelope Format | Raw Payload | Trigger | Response |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Announcement** | `TWB` | `XS1:<base64>` | `ANN\t<NICK>\t<ZONE>\t<NOTE>` | Login, Nick change, Note change, or reply to Inquire | None |
+| **Inquiry** | `TWB` | `XS1:<base64>` | `INQ\t<Toon>` | Player clicks `[?]` | Target replies with Announcement if `UnitName("player") == Toon` |
+| **User Chat** | `xsocial` | Plain text | Normal chat text | Player types in chat input box | None (appended to dedicated chat pane) |
 
-- **F2.1 Outbound SendChatMessage**:
-  ```lua
-  local chan_idx = get_channel_index(target_channel)
-  if chan_idx and chan_idx > 0 then
-      SendChatMessage(payload, "CHANNEL", nil, chan_idx)
-  end
-  ```
+- **F2.1 Base64 Obfuscation Engine**:
+  - Encodes payloads into standard RFC 4648 Base64 characters (`A-Z, a-z, 0-9, +, /, =`).
+  - Ensures packets are non-human-readable to casual observers on `TWB`.
+  - Max raw payload length is ~150 bytes, expanding to ~200 bytes Base64 (well below WoW's 255-byte chat limit).
 
-- **F2.2 Inbound Message Handler**:
-  - Triggered on `CHAT_MSG_CHANNEL` for `XSocialConfig.channel`:
-    - **Announcement Pattern**: `string.find(msg, "^#([^#]+)#%s*([^#]*)%s*#([^#]*)#")`
+- **F2.2 Outbound Protocol Transport (`TWB`)**:
+  - All protocol messages (`ANN`, `INQ`) are transmitted over the `TWB` channel index:
+    ```lua
+    local chan_idx = get_channel_index("TWB")
+    if chan_idx and chan_idx > 0 then
+        local packet = "XS1:" .. base64_encode(payload)
+        SendChatMessage(packet, "CHANNEL", nil, chan_idx)
+    end
+    ```
+  - User conversation is sent directly to `XSocialConfig.channel` without any envelope or encoding.
+
+- **F2.3 Inbound Message Routing**:
+  - **On `TWB` Channel**:
+    - Ignores messages not starting with `^XS1:(.+)`.
+    - Base64 decodes the payload string.
+    - If payload starts with `ANN\t<nick>\t<zone>\t<note>`:
       - Updates `XSocialDB.players[sender] = { nick = nick, zone = zone, note = note }`.
-      - Does NOT print to chat window.
-    - **Inquiry Pattern**: `string.find(msg, "^#whois#%s+([^%s]+)")`
-      - If queried target is player, replies with own announcement immediately.
-      - Does NOT print to chat window.
-    - **Normal Chat**:
-      - Replaces sender toon name with mapped Nickname.
-      - Constructs clickable link: `|Hplayer:sender|h|cffffd100[display_nick]|r|h: message`.
-      - Appends to right-pane `ScrollingMessageFrame`.
+      - Triggers UI refresh.
+    - If payload starts with `INQ\t<toon>`:
+      - If `UnitName("player") == toon`, immediately responds with own `ANN` announcement over `TWB`.
+    - Never prints anything to any chat window.
+  - **On User Chat Channel (`xsocial`)**:
+    - 100% human chat.
+    - Formats keywords (`1`, `inv`, `求组`) into clickable party invite links.
+    - Formats sender as clickable Nickname link `|Hplayer:sender|h|cffffd100[display_nick]|r|h: message`.
+    - Appends line to dedicated chat pane.
+    - Triggers HUD button unread flashing if window is closed.
+
+- **F2.4 Elimination of Chat Suppression Hooks**:
+  - Because protocol packets are never sent to `xsocial`, `ChatFrame_OnEvent` suppression hooks for `#whois#` are completely removed.
+  - Clean, zero-interference operation alongside Blizzard default chat frames.
 
 ---
 
 ### F3. Targeted Inquire & `/who` Fallback Engine
 
 - **F3.1 Dual Trigger**: Clicking `[?]` on `TargetToon`:
-  1. Sends `#whois# <TargetToon>` to channel.
+  1. Sends `XS1:<base64(INQ\tTargetToon)>` over `TWB`.
   2. If `/who` cooldown elapsed (>= 5 sec since last `/who`):
      - Sets `state.pending_who_target = TargetToon`.
      - Sets `state.last_who_time = time()`.
